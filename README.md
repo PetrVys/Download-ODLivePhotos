@@ -16,3 +16,4 @@ PS> .\Download-ODLivePhotos.ps1 -SaveTo 'c:\Live Photos' -PathToScan '\Pictures\
 There is no retry implemented in case OneDrive API fails for whatever reason. Unfortunately, when using the tool I see about 0.5% error rate when calling the API. If you see any error or if you're downloading big library, just rerun the command. Files already successfully downloaded are skipped on subsequent runs, so the next run will finish significantly faster.
 
 This utility only supports personal OneDrive accounts - to the best of my knowledge business/SharePoint accounts do not support Live Photos. Even if they did, I have no way to test them...
+There are now two versions of the script, as apparently Microsoft is migrating OneDrive personal users to SharePoint one by one. Just try which version works for you, the other will throw a bunch of errors and won't work.
