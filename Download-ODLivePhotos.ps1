@@ -46,7 +46,7 @@ function Register-WebView2Type
     if (!("Microsoft.Web.WebView2.WinForms.WebView2" -as [type])) {
         if (!(Test-Path "$($BasePath)\Microsoft.Web.WebView2.WinForms.dll")) {
             Write-Output "  Downloading nuget package $($Package) $($Version)"
-            Install-Package -Source "https://www.nuget.org/api/v2" -Name Microsoft.Web.WebView2 -RequiredVersion 1.0.3124.44 -Scope CurrentUser -Destination $BasePath -Force
+            Install-Package -Source "https://www.nuget.org/api/v2" -Name $Package -RequiredVersion $Version -Scope CurrentUser -Destination $BasePath -Force
             Write-Output "  Copying package files to script directory"
             foreach ( $framework in (Get-ChildItem "$basePath\$($Package).$($Version)\lib" -Directory) ) { 
                 copy-item -Recurse -Path "$BasePath\$($Package).$($Version)\lib\$($framework)\*.dll" -Destination $BasePath -Force
