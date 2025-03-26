@@ -23,22 +23,61 @@ ones.
 param (
     [Parameter(Mandatory)]
     [string] $SaveTo,
+    [string] $AccessToken,
     [string] $PathToScan = '\Pictures\Camera Roll'
 )
 
+
+function Register-WebView2Type
+{
+    <#
+    .DESCRIPTION
+    Check that WebView2 exists, if not obtain it from nuget.
+
+    .EXAMPLE
+    Register-WebView2Type
+    .NOTES
+    Author: Petr Vyskocil
+    #>
+    $Package = "Microsoft.Web.WebView2"
+    $Version = "1.0.3124.44"
+    $BasePath = "$env:temp\ODLivePhotos\"
+
+    if (!("Microsoft.Web.WebView2.WinForms.WebView2" -as [type])) {
+        if (!(Test-Path "$($BasePath)\Microsoft.Web.WebView2.WinForms.dll")) {
+            Write-Output "  Downloading nuget package $($Package) $($Version)"
+            Install-Package -Source "https://www.nuget.org/api/v2" -Name Microsoft.Web.WebView2 -RequiredVersion 1.0.3124.44 -Scope CurrentUser -Destination $BasePath -Force
+            Write-Output "  Copying package files to script directory"
+            foreach ( $framework in (Get-ChildItem "$basePath\$($Package).$($Version)\lib" -Directory) ) { 
+                copy-item -Recurse -Path "$BasePath\$($Package).$($Version)\lib\$($framework)\*.dll" -Destination $BasePath -Force
+            }
+            $arch = (Get-CimInstance Win32_operatingsystem).OSArchitecture
+            if ($arch -eq "32-bit") {
+                copy-item -Recurse -Path  "$BasePath\$($Package).$($Version)\runtimes\win-x86\native\*.dll" -Destination $BasePath -Force
+            }
+            if ($arch -eq "64-bit") {
+                copy-item -Recurse -Path  "$BasePath\$($Package).$($Version)\runtimes\win-x64\native\*.dll" -Destination $BasePath -Force
+            }
+            if ($arch -eq "ARM 64-bit Processor") {
+                copy-item -Recurse -Path  "$BasePath\$($Package).$($Version)\runtimes\win-arm64\native\*.dll" -Destination $BasePath -Force
+            }
+            Remove-Item -Recurse -Force "$BasePath\$($Package).$($Version)"
+        }
+        Write-Output "  Registering WebView2 type"
+        Add-Type -Path "$BasePath\Microsoft.Web.WebView2.WinForms.dll"
+    }
+}
 
 function Get-ODPhotosToken
 {
     <#
     .DESCRIPTION
-    Connect to OneDrive for authentication with a OneDrive web Photos client id. Adapted from https://github.com/MarcelMeurer/PowerShellGallery-OneDrive to mimic OneDrive Photos web OIDC login.
-    Unfortunately using custom ClientId seems impossible - generic OD client IDs are missing the ability to download Live Photos.
-    .PARAMETER ClientId
-    ClientId of OneDrive Photos web app (073204aa-c1e0-4e66-a200-e5815a0aa93d)
-    .PARAMETER Scope
-    Comma-separated string defining the authentication scope (https://dev.onedrive.com/auth/msa_oauth.htm). Default: "OneDrive.ReadWrite,offline_access,openid,profile".
-    .PARAMETER RedirectURI
-    Code authentication requires a correct URI. Must be https://photos.onedrive.com/auth/login.
+    Connect to OneDrive for authentication with a OneDrive web Photos client.
+
+    Open OneDrive photos in WebView2 and steal authentication token once
+    authenticated. This is a new SharePoint-like authentication that can
+    be requested only by MSFT internal apps, unfortunately the public
+    MS Graph API does not have access to Live Photos.
 
     .EXAMPLE
     $access_token=Get-ODPhotosToken
@@ -46,67 +85,34 @@ function Get-ODPhotosToken
     .NOTES
     Author: Petr Vyskocil
     #>
-    PARAM(
-        [string]$ClientId = "073204aa-c1e0-4e66-a200-e5815a0aa93d",
-        [string]$Scope = "OneDrive.ReadWrite,offline_access,openid,profile",
-        [string]$RedirectURI ="https://photos.onedrive.com/auth/login",
-        [switch]$DontShowLoginScreen=$false,
-        [switch]$LogOut
-    )
-    $Authentication=""
-    
-    [Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | out-null
-    [Reflection.Assembly]::LoadWithPartialName("System.Drawing") | out-null
-    [Reflection.Assembly]::LoadWithPartialName("System.Web") | out-null
-    if ($Logout)
-    {
-        $URIGetAccessToken="https://login.live.com/logout.srf"
-    }
-    else
-    {
-        $URIGetAccessToken="https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?client_id="+$ClientId+"&nonce=uv."+(New-Guid).Guid+"&response_mode=form_post&scope="+$Scope+"&response_type=code&redirect_URI="+$RedirectURI
-    }
-    $form = New-Object Windows.Forms.Form
-    if ($DontShowLoginScreen)
-    {
-        write-debug("Logon screen suppressed by flag -DontShowLoginScreen")
-        $form.Opacity = 0.0;
-    }
-    $form.text = "Authenticate to OneDrive"
-    $form.size = New-Object Drawing.size @(700,600)
-    $form.Width = 660
-    $form.Height = 775
-    $web=New-object System.Windows.Forms.WebBrowser
-    $web.IsWebBrowserContextMenuEnabled = $true
-    $web.Width = 600
-    $web.Height = 700
-    $web.Location = "25, 25"
-    $web.ScriptErrorsSuppressed = $true
-    $DocComplete  = {
-        if ($web.Url.AbsoluteUri -match "access_token=|error|code=|logout|/auth/login") {$form.Close() } # 
-    }
-    $web.Add_DocumentCompleted($DocComplete)
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--enable-features=msSingleSignOnOSForPrimaryAccountIsShared"
+    $web = New-Object Microsoft.Web.WebView2.WinForms.WebView2
+    $web.CreationProperties = New-Object 'Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties'
+    $web.CreationProperties.UserDataFolder = "$env:temp\ODLivePhotos\"
+    $web.Dock = "Fill"
+    $web.source  = "https://onedrive.live.com/?qt=allmyphotos&photosData=%2F&sw=bypassConfig&v=photos"
+    $web.add_CoreWebView2InitializationCompleted({
+        $web.CoreWebView2.Settings.UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.3124.85'
+        $web.CoreWebView2.add_WebResourceResponseReceived({
+            param($WebView2, $e)
+            if ($e.Request.Uri.StartsWith('https://api.onedrive.com/')) {
+                Write-Host $e.Request.Uri
+                if ($e.Request.Headers.Contains('Authorization')) {
+                    #Write-Host $e.Request.Headers.GetHeader('Authorization')
+                    $Script:AuthToken = $e.Request.Headers.GetHeader('Authorization')
+                    $form.Close()
+                }
+            }
+        })
+    })
+    $form = New-Object System.Windows.Forms.Form -Property @{Width=800;Height=800;Text="OneDrive Live Photo Downloader - Authentication Token capture dialog"} -ErrorAction Stop
     $form.Controls.Add($web)
-    $web.navigate($URIGetAccessToken)
-    $form.showdialog() | out-null
-    $Authentication = New-Object PSObject
-    # The returned code=XXXX is irrelevant, the actual secrets are sent as cookies:
-    $web.Document.Cookie -split ';' | % { 
-        $cookie = $_ -split '='
-        $cookieValue = [uri]::UnescapeDataString($cookie[1])
-        $Authentication | Add-Member NoteProperty $cookie[0].Trim() $cookieValue
-    }
-    
-    if (-Not $Authentication.'AccessToken-OneDrive.ReadWrite') {
-        write-error("Cannot get authentication token. This program does not suport token refresh at the moment. Try again, if you fail a few times, restart and try again.")
-        # TODO: Refresh token should be handled here : GET https://photos.onedrive.com/auth/refresh?scope=OneDrive.ReadWrite&refresh_token=
-        # Unfortunately it seems that this page hangs up the WebBrowser control, and we need all the cookies transferred to use...
-        # Deemed not worth debugging for utility that runs for a short period of time
-        return $web
-        
-    }
-    
-    return $Authentication
+    $form.Add_Shown( { $form.Activate() } )
+    $form.ShowDialog() | Out-Null
+
+    $web.Dispose()
+
+    return $Script:AuthToken    
 }
 
 function Download-LivePhotosAuth
@@ -155,7 +161,7 @@ function Download-LivePhotosAuth
     }
     Write-Debug("Calling OneDrive API")
     Write-Debug($Uri)
-    $WebRequest=Invoke-WebRequest -Method 'GET' -Header @{ Authorization = "BEARER "+$AccessToken} -ErrorAction SilentlyContinue -Uri $Uri
+    $WebRequest=Invoke-WebRequest -Method 'GET' -Header @{ Authorization = $AccessToken} -ErrorAction SilentlyContinue -Uri $Uri
     $Response = ConvertFrom-Json $WebRequest.Content
     $Response.value | % {
         $FolderPath = $CurrentPath + $_.name + '\'
@@ -234,7 +240,7 @@ function Download-SingleLivePhoto
     Write-Debug("Calling OneDrive API")
     Write-Debug($Uri)
     $TmpFile = $SaveTo+'tmp-file.mov'
-    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = "BEARER "+$AccessToken } -ErrorAction SilentlyContinue -OutFile $TmpFile -PassThru
+    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $TmpFile -PassThru
     $ActualSize = $WebRequest.RawContentLength
     $FileName = ($WebRequest.Headers.'Content-Disposition'.Split('=',2)[-1]).Trim('"')
     if ($FileName) {
@@ -250,7 +256,7 @@ function Download-SingleLivePhoto
     Write-Debug("Calling OneDrive API")
     Write-Debug($Uri)
     $TmpFile = $SaveTo+'tmp-file.img'
-    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = "BEARER "+$AccessToken } -ErrorAction SilentlyContinue -OutFile $TmpFile -PassThru
+    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $TmpFile -PassThru
     $ActualSize = $ActualSize + $WebRequest.RawContentLength
     $FileName = ($WebRequest.Headers.'Content-Disposition'.Split('=',2)[-1]).Trim('"')
     if ($FileName) {
@@ -273,8 +279,12 @@ Write-Output ""
 # This disables powershell progress indicators, speeding up Invoke-WebRequest with big results by a factor of 10 or so
 $ProgressPreference = 'SilentlyContinue'
 
-Write-Output "Getting OneDrive Authentication token..."
-$auth=Get-ODPhotosToken
+if ($AccessToken -eq '') {
+    Write-Output "Creating WebView2 component..."
+    Register-WebView2Type
+	Write-Output "Getting OneDrive Authentication token..."
+	$AccessToken = Get-ODPhotosToken
+}
 
 Write-Output "Downloading Live Photos..."
-Download-LivePhotosAuth -AccessToken $auth.'AccessToken-OneDrive.ReadWrite' -PathToScan $PathToScan -SaveTo $SaveTo
+Download-LivePhotosAuth -AccessToken $AccessToken -PathToScan $PathToScan -SaveTo $SaveTo
