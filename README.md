@@ -7,11 +7,11 @@ This utility authorizes as the [Photos app](https://photos.onedrive.com) to OneD
 
 ## Usage
 ```
-PS> .\Download-ODLivePhotos2.ps1 -SaveTo 'c:\Live Photos' -PathToScan '\Pictures\Camera Roll\2024' -AccessToken 'EwBIB......'
+PS> .\Download-ODLivePhotos2.ps1 -SaveTo 'c:\Live Photos' -PathToScan '\Pictures\Camera Roll\2024'
 ```
 * -SaveTo - Path where to save the Live Photos
 * -PathToScan - Path within your Personal OneDrive from where you want to download the Live Photos from
-* -AccessToken - authentication token to use, "stolen" from onedrive website communication via Dev Tools window (not mandatory, will be obtained automatically if not provided)
+* -AccessToken - authentication token to use in the form `BEARER EwBIB......`, "stolen" from onedrive website communication via Dev Tools window (not mandatory, will be obtained automatically if not provided)
 
 ## Troubleshooting
 There is no retry implemented in case OneDrive API fails for whatever reason. Unfortunately, when using the tool I see about 0.5% error rate when calling the API. If you see any error or if you're downloading big library, just rerun the command. Files already successfully downloaded are skipped on subsequent runs, so the next run will finish significantly faster.
