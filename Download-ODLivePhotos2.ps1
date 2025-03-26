@@ -49,18 +49,18 @@ function Register-WebView2Type
             Write-Output "  Downloading nuget package $($Package) $($Version)"
             Install-Package -Source "https://www.nuget.org/api/v2" -Name $Package -RequiredVersion $Version -Scope CurrentUser -Destination $BasePath -Force
             Write-Output "  Copying package files to script directory"
-            foreach ( $framework in (Get-ChildItem "$basePath\$($Package).$($Version)\lib" -Directory) ) { 
-                copy-item -Recurse -Path "$BasePath\$($Package).$($Version)\lib\$($framework)\*.dll" -Destination $BasePath -Force
+            foreach ( $Framework in (Get-ChildItem "$BasePath\$($Package).$($Version)\lib" -Directory) ) { 
+                Copy-Item -Recurse -Path "$BasePath\$($Package).$($Version)\lib\$($Framework)\*.dll" -Destination $BasePath -Force
             }
-            $arch = (Get-CimInstance Win32_operatingsystem).OSArchitecture
-            if ($arch -eq "32-bit") {
-                copy-item -Recurse -Path  "$BasePath\$($Package).$($Version)\runtimes\win-x86\native\*.dll" -Destination $BasePath -Force
+            $Arch = (Get-CimInstance Win32_operatingsystem).OSArchitecture
+            if ($Arch -eq "32-bit") {
+                Copy-Item -Recurse -Path  "$BasePath\$($Package).$($Version)\runtimes\win-x86\native\*.dll" -Destination $BasePath -Force
             }
-            if ($arch -eq "64-bit") {
-                copy-item -Recurse -Path  "$BasePath\$($Package).$($Version)\runtimes\win-x64\native\*.dll" -Destination $BasePath -Force
+            if ($Arch -eq "64-bit") {
+                Copy-Item -Recurse -Path  "$BasePath\$($Package).$($Version)\runtimes\win-x64\native\*.dll" -Destination $BasePath -Force
             }
-            if ($arch -eq "ARM 64-bit Processor") {
-                copy-item -Recurse -Path  "$BasePath\$($Package).$($Version)\runtimes\win-arm64\native\*.dll" -Destination $BasePath -Force
+            if ($Arch -eq "ARM 64-bit Processor") {
+                Copy-Item -Recurse -Path  "$BasePath\$($Package).$($Version)\runtimes\win-arm64\native\*.dll" -Destination $BasePath -Force
             }
             Remove-Item -Recurse -Force "$BasePath\$($Package).$($Version)"
         }
@@ -86,34 +86,34 @@ function Get-ODPhotosToken
     .NOTES
     Author: Petr Vyskocil
     #>
-    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--enable-features=msSingleSignOnOSForPrimaryAccountIsShared"
-    $web = New-Object Microsoft.Web.WebView2.WinForms.WebView2
-    $web.CreationProperties = New-Object 'Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties'
-    $web.CreationProperties.UserDataFolder = "$env:temp\ODLivePhotos\"
-    $web.Dock = "Fill"
-    $web.source  = "https://onedrive.live.com/?qt=allmyphotos&photosData=%2F&sw=bypassConfig&v=photos"
-    $web.add_CoreWebView2InitializationCompleted({
-        $web.CoreWebView2.Settings.UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.3124.85'
-        $web.CoreWebView2.add_WebResourceResponseReceived({
-            param($WebView2, $e)
-            if ($e.Request.Uri.StartsWith('https://my.microsoftpersonalcontent.com/_api/') -or $e.Request.Uri.StartsWith('https://api.onedrive.com/')) {
-                Write-Host $e.Request.Uri
-                if ($e.Request.Headers.Contains('Authorization')) {
-                    #Write-Host $e.Request.Headers.GetHeader('Authorization')
-                    $Script:AuthToken = $e.Request.Headers.GetHeader('Authorization')
-                    $form.Close()
+    $Hash = [hashtable]::Synchronized(@{}) 
+	$Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--enable-features=msSingleSignOnOSForPrimaryAccountIsShared"
+    $Web = New-Object Microsoft.Web.WebView2.WinForms.WebView2
+    $Web.CreationProperties = New-Object Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties
+    $Web.CreationProperties.UserDataFolder = "$env:temp\ODLivePhotos\"
+    $Web.Dock = "Fill"
+    $Web.source  = "https://onedrive.live.com/?qt=allmyphotos&photosData=%2F&sw=bypassConfig&v=photos"
+    $Web.add_CoreWebView2InitializationCompleted({
+        $Web.CoreWebView2.Settings.UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.3124.85'
+        $Web.CoreWebView2.add_WebResourceResponseReceived({
+            param($WebView2, $E)
+            if ($E.Request.Uri.StartsWith('https://my.microsoftpersonalcontent.com/_api/') -or $E.Request.Uri.StartsWith('https://api.onedrive.com/')) {
+                Write-Host $E.Request.Uri
+                if ($E.Request.Headers.Contains('Authorization')) {
+                    $Hash.AuthToken = $E.Request.Headers.GetHeader('Authorization')
+                    $Form.Close()
                 }
             }
         })
     })
-    $form = New-Object System.Windows.Forms.Form -Property @{Width=800;Height=800;Text="OneDrive Live Photo Downloader - Authentication Token capture dialog"} -ErrorAction Stop
-    $form.Controls.Add($web)
-    $form.Add_Shown( { $form.Activate() } )
-    $form.ShowDialog() | Out-Null
+    $Form = New-Object System.Windows.Forms.Form -Property @{Width=800;Height=800;Text="OneDrive Live Photo Downloader - Authentication Token capture dialog"} -ErrorAction Stop
+    $Form.Controls.Add($web)
+    $Form.Add_Shown( { $form.Activate() } )
+    $Form.ShowDialog() | Out-Null
 
-    $web.Dispose()
+    $Web.Dispose()
 
-    return $Script:AuthToken    
+    return $Hash.AuthToken    
 }
 
 function Download-LivePhotosAuth
