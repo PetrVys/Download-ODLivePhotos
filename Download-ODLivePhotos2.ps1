@@ -25,7 +25,7 @@ ones.
 param (
     [Parameter(Mandatory)]
     [string] $SaveTo,
-	[string] $AccessToken,
+    [string] $AccessToken,
     [string] $PathToScan = '\Pictures\Camera Roll'
 )
 
@@ -96,7 +96,7 @@ function Get-ODPhotosToken
         $web.CoreWebView2.Settings.UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.3124.85'
         $web.CoreWebView2.add_WebResourceResponseReceived({
             param($WebView2, $e)
-            if ($e.Request.Uri.StartsWith('https://my.microsoftpersonalcontent.com/_api/')) {
+            if ($e.Request.Uri.StartsWith('https://my.microsoftpersonalcontent.com/_api/') -or $e.Request.Uri.StartsWith('https://api.onedrive.com/')) {
                 Write-Host $e.Request.Uri
                 if ($e.Request.Headers.Contains('Authorization')) {
                     #Write-Host $e.Request.Headers.GetHeader('Authorization')
@@ -147,7 +147,7 @@ function Download-LivePhotosAuth
         [string]$PathToScan='\',
         [string]$CurrentPath='',
         [string]$ElementId='',
-		[string]$DriveId='',
+        [string]$DriveId='',
         [string]$Uri=''
     )
     if (!$PathToScan.EndsWith('\')) { $PathToScan = $PathToScan + '\' }
@@ -159,11 +159,11 @@ function Download-LivePhotosAuth
         } else {
             $Location='items/' + $ElementId
         }
-		if ($DriveId -eq '') {
-			$Uri = 'https://my.microsoftpersonalcontent.com/_api/v2.1/drive/' + $Location + '/children?%24filter=photo%2FlivePhoto+ne+null+or+folder+ne+null+or+remoteItem+ne+null&select=fileSystemInfo%2Cphoto%2Cid%2Cname%2Csize%2Cfolder%2CremoteItem'
-		} else {
-			$Uri = 'https://my.microsoftpersonalcontent.com/_api/v2.1/drives/' +$DriveId + '/' + $Location + '/children?%24filter=photo%2FlivePhoto+ne+null+or+folder+ne+null+or+remoteItem+ne+null&select=fileSystemInfo%2Cphoto%2Cid%2Cname%2Csize%2Cfolder%2CremoteItem'
-		}
+        if ($DriveId -eq '') {
+            $Uri = 'https://my.microsoftpersonalcontent.com/_api/v2.1/drive/' + $Location + '/children?%24filter=photo%2FlivePhoto+ne+null+or+folder+ne+null+or+remoteItem+ne+null&select=fileSystemInfo%2Cphoto%2Cid%2Cname%2Csize%2Cfolder%2CremoteItem'
+        } else {
+            $Uri = 'https://my.microsoftpersonalcontent.com/_api/v2.1/drives/' +$DriveId + '/' + $Location + '/children?%24filter=photo%2FlivePhoto+ne+null+or+folder+ne+null+or+remoteItem+ne+null&select=fileSystemInfo%2Cphoto%2Cid%2Cname%2Csize%2Cfolder%2CremoteItem'
+        }
     }
     Write-Debug("Calling OneDrive API")
     Write-Debug($Uri)
@@ -187,8 +187,8 @@ function Download-LivePhotosAuth
             if ([bool]$_.photo.PSObject.Properties['livePhoto']) {
                 if ($CurrentPath.StartsWith($PathToScan)) {
                     $TargetPath = $SaveTo + '\' + $CurrentPath.Substring($PathToScan.Length)
-					$VideoName = ([io.fileinfo]$_.name).basename+'.mov'
-					$VideoLen = $_.photo.livePhoto.totalStreamSize - $_.size
+                    $VideoName = ([io.fileinfo]$_.name).basename+'.mov'
+                    $VideoLen = $_.photo.livePhoto.totalStreamSize - $_.size
                     if ( (Test-Path($TargetPath+$_.name)) -and # Target image exists
                          (Test-Path($TargetPath+$VideoName)) -and # Target video exists
                          ((Get-Item($TargetPath+$_.name)).Length -eq $_.size) -and # size of image is onedrive's size
@@ -242,9 +242,9 @@ function Download-SingleLivePhoto
         [Parameter(Mandatory=$True)]
         [string]$SaveTo,
         [Parameter(Mandatory=$True)]
-		[string]$ImageName,
+        [string]$ImageName,
         [Parameter(Mandatory=$True)]
-		[string]$VideoName,
+        [string]$VideoName,
         [Parameter(Mandatory=$True)]
         [int]$ExpImgLen,
         [Parameter(Mandatory=$True)]
@@ -256,31 +256,31 @@ function Download-SingleLivePhoto
     if (!(Test-Path $SaveTo)) { New-Item -ItemType Directory -Force $SaveTo | Out-Null }
     
     # video part
-	if ($DriveId -eq '') {
-		$Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drive/items/$($ElementId)/content?format=video"
-	} else {
-		$Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drives/$($DriveId)/items/$($ElementId)/content?format=video"
-	}
+    if ($DriveId -eq '') {
+        $Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drive/items/$($ElementId)/content?format=video"
+    } else {
+        $Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drives/$($DriveId)/items/$($ElementId)/content?format=video"
+    }
     Write-Debug("Calling OneDrive API")
     Write-Debug($Uri)
     $FileName = $SaveTo+$VideoName
-	If (Test-Path($FileName)) { Remove-Item ($FileName) }
+    If (Test-Path($FileName)) { Remove-Item ($FileName) }
     $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $FileName -PassThru
     $ActualLen = $WebRequest.RawContentLength
     (Get-Item ($FileName)).LastWriteTime = $LastModified
 
-	If ($ActualLen -ne $ExpVidLen)  { Write-Error("Error saving video part of live photo $ElementId. Got $ActualLen bytes, expected $ExpVidLen bytes.") }
+    If ($ActualLen -ne $ExpVidLen)  { Write-Error("Error saving video part of live photo $ElementId. Got $ActualLen bytes, expected $ExpVidLen bytes.") }
 
     # image part
-	if ($DriveId -eq '') {
-		$Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drive/items/$($ElementId)/content"
-	} else {
-		$Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drives/$($DriveId)/items/$($ElementId)/content"
-	}
+    if ($DriveId -eq '') {
+        $Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drive/items/$($ElementId)/content"
+    } else {
+        $Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drives/$($DriveId)/items/$($ElementId)/content"
+    }
     Write-Debug("Calling OneDrive API")
     Write-Debug($Uri)
     $FileName = $SaveTo+$ImageName
-	If (Test-Path($FileName)) { Remove-Item ($FileName) }
+    If (Test-Path($FileName)) { Remove-Item ($FileName) }
     $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $FileName -PassThru
     $ActualLen = $WebRequest.RawContentLength
     (Get-Item ($FileName)).LastWriteTime = $LastModified
@@ -301,8 +301,8 @@ $ProgressPreference = 'SilentlyContinue'
 if ($AccessToken -eq '') {
     Write-Output "Creating WebView2 component..."
     Register-WebView2Type
-	Write-Output "Getting OneDrive Authentication token..."
-	$AccessToken = Get-ODPhotosToken
+    Write-Output "Getting OneDrive Authentication token..."
+    $AccessToken = Get-ODPhotosToken
 }
 
 Write-Output "Downloading Live Photos..."

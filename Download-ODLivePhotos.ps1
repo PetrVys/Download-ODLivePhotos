@@ -95,7 +95,7 @@ function Get-ODPhotosToken
         $web.CoreWebView2.Settings.UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.3124.85'
         $web.CoreWebView2.add_WebResourceResponseReceived({
             param($WebView2, $e)
-            if ($e.Request.Uri.StartsWith('https://api.onedrive.com/')) {
+            if ($e.Request.Uri.StartsWith('https://my.microsoftpersonalcontent.com/_api/') -or $e.Request.Uri.StartsWith('https://api.onedrive.com/')) {
                 Write-Host $e.Request.Uri
                 if ($e.Request.Headers.Contains('Authorization')) {
                     #Write-Host $e.Request.Headers.GetHeader('Authorization')
@@ -282,8 +282,8 @@ $ProgressPreference = 'SilentlyContinue'
 if ($AccessToken -eq '') {
     Write-Output "Creating WebView2 component..."
     Register-WebView2Type
-	Write-Output "Getting OneDrive Authentication token..."
-	$AccessToken = Get-ODPhotosToken
+    Write-Output "Getting OneDrive Authentication token..."
+    $AccessToken = Get-ODPhotosToken
 }
 
 Write-Output "Downloading Live Photos..."
