@@ -14,10 +14,10 @@ PS> .\Download-ODLivePhotos2.ps1 -SaveTo 'c:\Live Photos' -PathToScan '\Pictures
 * -AccessToken - authentication token to use in the form `BEARER EwBIB......`, "stolen" from onedrive website communication via Dev Tools window (not mandatory, will be obtained automatically if not provided)
 
 ## Troubleshooting
-The script uses directory %TEMP%\ODLivePhotos for temporary files related to WebView2 component. If you have issues with it, delete this directory and try again.
+The script uses directory %TEMP%\ODLivePhotos for temporary files related to WebView2 component. If you have issues with authentication, delete this directory and try again.
 
 There is no retry implemented in case OneDrive API fails for whatever reason. If you see any error or if you're downloading big library, just rerun the command. Files already successfully downloaded and with correct size are skipped on subsequent runs, so the next run will finish significantly faster.
 
-This utility only supports personal OneDrive accounts - to the best of my knowledge business accounts do not support Live Photos. Even if they did, I have no way to test them...
+This utility only supports personal OneDrive accounts - to the best of my knowledge business accounts do not support Live Photos. Given that the backbone is now clearly being migrated to a SharePoint instance (even though access to SharePoint API is closely guarded and has to be obtained in shady ways as you can see in the script), maybe business OneDrive will start supporting Live Photos. Ideally with official and documented API.
 
 There are now two versions of the script, as apparently Microsoft is migrating OneDrive personal users to SharePoint one by one. Since there are significant differences between API and all the accounts should be migrated soon, I did not spend time to create one universal script. Just try which version works for you, the other will throw a bunch of errors and won't work.
