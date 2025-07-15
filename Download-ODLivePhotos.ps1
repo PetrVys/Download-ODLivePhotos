@@ -214,7 +214,7 @@ function Download-LivePhotosAuth
     if ([bool]$Response.PSobject.Properties["@odata.nextLink"]) 
     {
         Write-Debug("Getting more elements from service (@odata.nextLink is present)")
-        Download-LivePhotosAuth -AccessToken $AccessToken -SaveTo $SaveTo -PathToScan $PathToScan -CurrentPath $CurrentPath -Uri $Response.'@odata.nextLink' =DriveId $DriveId
+        Download-LivePhotosAuth -AccessToken $AccessToken -SaveTo $SaveTo -PathToScan $PathToScan -CurrentPath $CurrentPath -Uri $Response.'@odata.nextLink' -DriveId $DriveId
     }
 }
 
