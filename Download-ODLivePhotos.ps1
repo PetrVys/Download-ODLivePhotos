@@ -11,7 +11,7 @@ OneDrive application access token.
 DOS-Style path on your OneDrive that should be scanned. Most likely '\Pictures\Camera Roll' or any other shared Camera Roll folder.
 
 .EXAMPLE
-.\Download-ODLivePhotos2.ps1 'C:\Live Photos'
+.\Download-ODLivePhotos.ps1 'C:\Live Photos'
 
 .NOTES
 Author: Petr Vyskocil
@@ -205,7 +205,7 @@ function Download-LivePhotosAuth
 						}
                     } else {
                         Write-Output("Detected live photo $($_.id) - $($CurrentPath + $_.name). Saving image/video pair to $($TargetPath).")
-                        Download-SingleLivePhoto -AccessToken $AccessToken -ElementId $_.id -DriveId $DriveId -SaveTo $TargetPath -ImageName $_.name -VideoName $VideoName -ExpImgLen $_.size -ExpVidLen $VideoLen -LastModified $_.fileSystemInfo.lastModifiedDateTime
+                        Download-SingleLivePhoto -AccessToken $AccessToken -ElementId $_.id -DriveId $DriveId -SaveTo $TargetPath -ImageName $_.name -VideoName $VideoName -ExpImgLen $_.size -ExpVidLen $VideoLen -LastModified $_.photo.takenDateTime
                     }
                 }
             }
