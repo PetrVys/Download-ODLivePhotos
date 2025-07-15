@@ -5,11 +5,13 @@ This script attempts to authenticate to OneDrive as client https://photos.onedri
 location within your personal OneDrive.
 .PARAMETER SaveTo
 Target path where to save live photos.
+.PARAMETER AccessToken
+OneDrive application access token.
 .PARAMETER PathToScan
 DOS-Style path on your OneDrive that should be scanned. Most likely '\Pictures\Camera Roll' or any other shared Camera Roll folder.
 
 .EXAMPLE
-.\Download-ODLivePhotos.ps1 'C:\Live Photos'
+.\Download-ODLivePhotos2.ps1 'C:\Live Photos'
 
 .NOTES
 Author: Petr Vyskocil
@@ -26,7 +28,6 @@ param (
     [string] $AccessToken,
     [string] $PathToScan = '\Pictures\Camera Roll'
 )
-
 
 function Register-WebView2Type
 {
@@ -146,6 +147,7 @@ function Download-LivePhotosAuth
         [string]$PathToScan='\',
         [string]$CurrentPath='',
         [string]$ElementId='',
+        [string]$DriveId='',
         [string]$Uri=''
     )
     if (!$PathToScan.EndsWith('\')) { $PathToScan = $PathToScan + '\' }
@@ -157,38 +159,53 @@ function Download-LivePhotosAuth
         } else {
             $Location='items/' + $ElementId
         }
-        $Uri = 'https://api.onedrive.com/v1.0/drive/' + $Location + '/children?%24filter=photo%2FlivePhoto+ne+null+or+folder+ne+null+or+remoteItem+ne+null&select=fileSystemInfo%2Cphoto%2Cid%2Cname%2Csize%2Cfolder%2CremoteItem'
+        if ($DriveId -eq '') {
+            $Uri = 'https://my.microsoftpersonalcontent.com/_api/v2.1/drive/' + $Location + '/children?%24filter=photo%2FlivePhoto+ne+null+or+folder+ne+null+or+remoteItem+ne+null&select=fileSystemInfo%2Cphoto%2Cid%2Cname%2Csize%2Cfolder%2CremoteItem'
+        } else {
+            $Uri = 'https://my.microsoftpersonalcontent.com/_api/v2.1/drives/' +$DriveId + '/' + $Location + '/children?%24filter=photo%2FlivePhoto+ne+null+or+folder+ne+null+or+remoteItem+ne+null&select=fileSystemInfo%2Cphoto%2Cid%2Cname%2Csize%2Cfolder%2CremoteItem'
+        }
     }
     Write-Debug("Calling OneDrive API")
     Write-Debug($Uri)
-    $WebRequest=Invoke-WebRequest -Method 'GET' -Header @{ Authorization = $AccessToken} -ErrorAction SilentlyContinue -Uri $Uri
+    $WebRequest=Invoke-WebRequest -Method 'GET' -Header @{ Authorization = $AccessToken; Prefer = "Include-Feature=AddToOneDrive"} -ErrorAction SilentlyContinue -Uri $Uri
     $Response = ConvertFrom-Json $WebRequest.Content
     $Response.value | % {
         $FolderPath = $CurrentPath + $_.name + '\'
         if ([bool]$_.PSObject.Properties['folder']) {
             if ($FolderPath.StartsWith($PathToScan) -or $PathToScan.StartsWith($FolderPath)) { # We're traversing the target folder or we're getting into it
                 Write-Output("Checking folder $($_.id) - $($FolderPath)")
-                Download-LivePhotosAuth -AccessToken $AccessToken -SaveTo $SaveTo -PathToScan $PathToScan -CurrentPath $FolderPath -ElementId $_.id
+                Download-LivePhotosAuth -AccessToken $AccessToken -SaveTo $SaveTo -PathToScan $PathToScan -CurrentPath $FolderPath -ElementId $_.id -DriveId $DriveId
             }
         }
         if ([bool]$_.PSObject.Properties['remoteItem']) {
             if ($FolderPath.StartsWith($PathToScan) -or $PathToScan.StartsWith($FolderPath)) { # We're traversing the target folder or we're getting into it
-                Write-Output("Checking shared folder $($_.remoteItem.id) - $($FolderPath)")
-                Download-LivePhotosAuth -AccessToken $AccessToken -SaveTo $SaveTo -PathToScan $PathToScan -CurrentPath $FolderPath -ElementId $_.remoteItem.id
+                Write-Output("Checking shared folder $($_.remoteItem.id) - $($FolderPath) - $($_.remoteItem.parentReference.driveId)")
+                Download-LivePhotosAuth -AccessToken $AccessToken -SaveTo $SaveTo -PathToScan $PathToScan -CurrentPath $FolderPath -ElementId $_.remoteItem.id -DriveId $_.remoteItem.parentReference.driveId
             }
         }
         if ([bool]$_.PSObject.Properties['photo']) {
             if ([bool]$_.photo.PSObject.Properties['livePhoto']) {
                 if ($CurrentPath.StartsWith($PathToScan)) {
                     $TargetPath = $SaveTo + '\' + $CurrentPath.Substring($PathToScan.Length)
+                    $VideoName = ([io.fileinfo]$_.name).basename+'.mov'
+					if ($_.photo.livePhoto.totalStreamSize -gt $_.size) {
+						$VideoLen = $_.photo.livePhoto.totalStreamSize - $_.size
+					} else {
+						$VideoLen = -1
+					}
                     if ( (Test-Path($TargetPath+$_.name)) -and # Target image exists
-                         (Test-Path($TargetPath+([io.fileinfo]$_.name).basename+'.mov')) -and # Target video exists
-                         (((Get-Item($TargetPath+$_.name)).Length + (Get-Item($TargetPath+([io.fileinfo]$_.name).basename+'.mov')).Length) -eq $_.size) # size of image and video together is onedrive's size
+                         (Test-Path($TargetPath+$VideoName)) -and # Target video exists
+                         ((Get-Item($TargetPath+$_.name)).Length -eq $_.size) -and # size of image is onedrive's size
+                         (((Get-Item($TargetPath+$VideoName)).Length -eq $VideoLen) -or ($VideoLen -eq -1 -and (Get-Item($TargetPath+$VideoName)).Length -gt 65536))# size of video is onedrive's size
                        ) {
-                        Write-Output "Live photo $($_.id) - $($CurrentPath + $_.name) already exists at $($TargetPath) - skipping."
+						if ($VideoLen -eq -1) {
+							Write-Output "Live photo $($_.id) - $($CurrentPath + $_.name) already exists at $($TargetPath) - skipping. Video file is bigger than 64kB, assuming valid video."
+						} else {
+							Write-Output "Live photo $($_.id) - $($CurrentPath + $_.name) already exists at $($TargetPath) - skipping."
+						}
                     } else {
-                        Write-Output("Detected live photo $($_.id) - $($CurrentPath + $_.name). Saving image/video pair to $($TargetPath)")
-                        Download-SingleLivePhoto -AccessToken $AccessToken -ElementId $_.id -SaveTo $TargetPath -ExpectedSize $_.size -LastModified $_.fileSystemInfo.lastModifiedDateTime
+                        Write-Output("Detected live photo $($_.id) - $($CurrentPath + $_.name). Saving image/video pair to $($TargetPath).")
+                        Download-SingleLivePhoto -AccessToken $AccessToken -ElementId $_.id -DriveId $DriveId -SaveTo $TargetPath -ImageName $_.name -VideoName $VideoName -ExpImgLen $_.size -ExpVidLen $VideoLen -LastModified $_.fileSystemInfo.lastModifiedDateTime
                     }
                 }
             }
@@ -196,8 +213,8 @@ function Download-LivePhotosAuth
     }
     if ([bool]$Response.PSobject.Properties["@odata.nextLink"]) 
     {
-        Write-Debug("Getting more elements form service (@odata.nextLink is present)")
-        Download-LivePhotosAuth -AccessToken $AccessToken -SaveTo $SaveTo -PathToScan $PathToScan -CurrentPath $CurrentPath -Uri $Response.'@odata.nextLink'
+        Write-Debug("Getting more elements from service (@odata.nextLink is present)")
+        Download-LivePhotosAuth -AccessToken $AccessToken -SaveTo $SaveTo -PathToScan $PathToScan -CurrentPath $CurrentPath -Uri $Response.'@odata.nextLink' =DriveId $DriveId
     }
 }
 
@@ -210,10 +227,14 @@ function Download-SingleLivePhoto
     Access token for OneDrive API that has ability to download live photos.
     .PARAMETER ElementId
     OneDrive ElementId of a LivePhoto
+    .PARAMETER DriveId
+    OneDrive DriveId of a LivePhoto
     .PARAMETER SaveTo
     Target path where to save live photos.
-    .PARAMETER ExpectedSize
-    Sum of photo and video file sizes, as reported in the containing folder
+    .PARAMETER ExpImgLen
+    Expected length of image file, as reported in containing folder.
+    .PARAMETER ExpVidLen
+    Expected length of video file, as reported in containing folder.
     .PARAMETER LastModified
     Date to set on a created file.
 
@@ -225,10 +246,17 @@ function Download-SingleLivePhoto
         [string]$AccessToken,
         [Parameter(Mandatory=$True)]
         [string]$ElementId,
+        [string]$DriveId,
         [Parameter(Mandatory=$True)]
         [string]$SaveTo,
         [Parameter(Mandatory=$True)]
-        [int]$ExpectedSize,
+        [string]$ImageName,
+        [Parameter(Mandatory=$True)]
+        [string]$VideoName,
+        [Parameter(Mandatory=$True)]
+        [int]$ExpImgLen,
+        [Parameter(Mandatory=$True)]
+        [int]$ExpVidLen,
         [Parameter(Mandatory=$True)]
         [datetime]$LastModified
     )
@@ -236,43 +264,42 @@ function Download-SingleLivePhoto
     if (!(Test-Path $SaveTo)) { New-Item -ItemType Directory -Force $SaveTo | Out-Null }
     
     # video part
-    $Uri = "https://api.onedrive.com/v1.0/drive/items/$($ElementId)/content?format=video"
+    if ($DriveId -eq '') {
+        $Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drive/items/$($ElementId)/content?format=video"
+    } else {
+        $Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drives/$($DriveId)/items/$($ElementId)/content?format=video"
+    }
     Write-Debug("Calling OneDrive API")
     Write-Debug($Uri)
-    $TmpFile = $SaveTo+'tmp-file.mov'
-    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $TmpFile -PassThru
-    $ActualSize = $WebRequest.RawContentLength
-    $FileName = ($WebRequest.Headers.'Content-Disposition'.Split('=',2)[-1]).Trim('"')
-    if ($FileName) {
-        Write-Debug("Renaming $TmpFile to $FileName")
-        if (Test-Path($SaveTo+$FileName)) { Remove-Item ($SaveTo+$FileName) }
-        Rename-Item -Path $TmpFile -NewName $FileName
-        (Get-Item ($SaveTo+$FileName)).LastWriteTime = $LastModified
-    }
-    
+    $FileName = $SaveTo+$VideoName
+    If (Test-Path($FileName)) { Remove-Item ($FileName) }
+    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $FileName -PassThru
+    $ActualLen = $WebRequest.RawContentLength
+    (Get-Item ($FileName)).LastWriteTime = $LastModified
+
+    If ($ExpVidLen -ne -1 -and $ActualLen -ne $ExpVidLen)  { Write-Error("Error saving video part of live photo $ElementId. Got $ActualLen bytes, expected $ExpVidLen bytes.") }
 
     # image part
-    $Uri = "https://api.onedrive.com/v1.0/drive/items/$($ElementId)/content"
+    if ($DriveId -eq '') {
+        $Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drive/items/$($ElementId)/content"
+    } else {
+        $Uri = "https://my.microsoftpersonalcontent.com/_api/v2.1/drives/$($DriveId)/items/$($ElementId)/content"
+    }
     Write-Debug("Calling OneDrive API")
     Write-Debug($Uri)
-    $TmpFile = $SaveTo+'tmp-file.img'
-    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $TmpFile -PassThru
-    $ActualSize = $ActualSize + $WebRequest.RawContentLength
-    $FileName = ($WebRequest.Headers.'Content-Disposition'.Split('=',2)[-1]).Trim('"')
-    if ($FileName) {
-        Write-Debug("Renaming $TmpFile to $FileName")
-        if (Test-Path($SaveTo+$FileName)) { Remove-Item ($SaveTo+$FileName) }
-        Rename-Item -Path $TmpFile -NewName $FileName
-        (Get-Item ($SaveTo+$FileName)).LastWriteTime = $LastModified
-    }
+    $FileName = $SaveTo+$ImageName
+    If (Test-Path($FileName)) { Remove-Item ($FileName) }
+    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $FileName -PassThru
+    $ActualLen = $WebRequest.RawContentLength
+    (Get-Item ($FileName)).LastWriteTime = $LastModified
     
-    if ($ActualSize -ne $ExpectedSize) { Write-Error("Error saving live photo $ElementId. Got $ActualSize bytes, expected $ExpectedSize bytes.") }
+    if ($ActualLen -ne $ExpImgLen) { Write-Error("Error saving photo part of live photo $ElementId. Got $ActualLen bytes, expected $ExpImgLen bytes.") }
 
 }
 
 
 Write-Output "Live Photo downloader - Downloads Live Photos from OneDrive camera roll as saved by OneDrive iOS app."
-Write-Output "(C) 2024 Petr Vyskocil. Licensed under MIT license."
+Write-Output "(C) 2024-2025 Petr Vyskocil. Licensed under MIT license."
 Write-Output ""
 
 
