@@ -92,7 +92,7 @@ function Get-ODPhotosToken
     $Web.CreationProperties = New-Object Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties
     $Web.CreationProperties.UserDataFolder = "$env:temp\ODLivePhotos\"
     $Web.Dock = "Fill"
-    $Web.source  = "https://onedrive.live.com/?qt=allmyphotos&photosData=%2F&sw=bypassConfig&v=photos"
+    $Web.source  = "https://onedrive.live.com/?view=8"
     $Web.add_CoreWebView2InitializationCompleted({
         $Web.CoreWebView2.Settings.UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.3124.85'
         $Web.CoreWebView2.add_WebResourceResponseReceived({
