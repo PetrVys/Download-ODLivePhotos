@@ -179,7 +179,7 @@ function Download-LivePhotosAuth
         }
         if ([bool]$_.PSObject.Properties['remoteItem']) {
             if ($FolderPath.StartsWith($PathToScan) -or $PathToScan.StartsWith($FolderPath)) { # We're traversing the target folder or we're getting into it
-                Write-Output("Checking shared folder $($_.remoteItem.id) - $($FolderPath)")
+                Write-Output("Checking shared folder $($_.remoteItem.id) - $($FolderPath) - $($_.remoteItem.parentReference.driveId)")
                 Download-LivePhotosAuth -AccessToken $AccessToken -SaveTo $SaveTo -PathToScan $PathToScan -CurrentPath $FolderPath -ElementId $_.remoteItem.id -DriveId $_.remoteItem.parentReference.driveId
             }
         }
@@ -188,15 +188,23 @@ function Download-LivePhotosAuth
                 if ($CurrentPath.StartsWith($PathToScan)) {
                     $TargetPath = $SaveTo + '\' + $CurrentPath.Substring($PathToScan.Length)
                     $VideoName = ([io.fileinfo]$_.name).basename+'.mov'
-                    $VideoLen = $_.photo.livePhoto.totalStreamSize - $_.size
+					if ($_.photo.livePhoto.totalStreamSize -gt $_.size) {
+						$VideoLen = $_.photo.livePhoto.totalStreamSize - $_.size
+					} else {
+						$VideoLen = -1
+					}
                     if ( (Test-Path($TargetPath+$_.name)) -and # Target image exists
                          (Test-Path($TargetPath+$VideoName)) -and # Target video exists
                          ((Get-Item($TargetPath+$_.name)).Length -eq $_.size) -and # size of image is onedrive's size
-                         ((Get-Item($TargetPath+$VideoName)).Length -eq $VideoLen) # size of video is onedrive's size
+                         (((Get-Item($TargetPath+$VideoName)).Length -eq $VideoLen) -or ($VideoLen -eq -1 -and (Get-Item($TargetPath+$VideoName)).Length -gt 65536))# size of video is onedrive's size
                        ) {
-                        Write-Output "Live photo $($_.id) - $($CurrentPath + $_.name) already exists at $($TargetPath) - skipping."
+						if ($VideoLen -eq -1) {
+							Write-Output "Live photo $($_.id) - $($CurrentPath + $_.name) already exists at $($TargetPath) - skipping. Video file is bigger than 64kB, assuming valid video."
+						} else {
+							Write-Output "Live photo $($_.id) - $($CurrentPath + $_.name) already exists at $($TargetPath) - skipping."
+						}
                     } else {
-                        Write-Output("Detected live photo $($_.id) - $($CurrentPath + $_.name). Saving image/video pair to $($TargetPath)")
+                        Write-Output("Detected live photo $($_.id) - $($CurrentPath + $_.name). Saving image/video pair to $($TargetPath).")
                         Download-SingleLivePhoto -AccessToken $AccessToken -ElementId $_.id -DriveId $DriveId -SaveTo $TargetPath -ImageName $_.name -VideoName $VideoName -ExpImgLen $_.size -ExpVidLen $VideoLen -LastModified $_.fileSystemInfo.lastModifiedDateTime
                     }
                 }
@@ -205,8 +213,8 @@ function Download-LivePhotosAuth
     }
     if ([bool]$Response.PSobject.Properties["@odata.nextLink"]) 
     {
-        write-debug("Getting more elements form service (@odata.nextLink is present)")
-        Download-LivePhotosAuth -AccessToken $AccessToken -SaveTo $SaveTo -PathToScan $PathToScan -CurrentPath $CurrentPath -Uri $Response.'@odata.nextLink'
+        Write-Debug("Getting more elements from service (@odata.nextLink is present)")
+        Download-LivePhotosAuth -AccessToken $AccessToken -SaveTo $SaveTo -PathToScan $PathToScan -CurrentPath $CurrentPath -Uri $Response.'@odata.nextLink' =DriveId $DriveId
     }
 }
 
@@ -269,7 +277,7 @@ function Download-SingleLivePhoto
     $ActualLen = $WebRequest.RawContentLength
     (Get-Item ($FileName)).LastWriteTime = $LastModified
 
-    If ($ActualLen -ne $ExpVidLen)  { Write-Error("Error saving video part of live photo $ElementId. Got $ActualLen bytes, expected $ExpVidLen bytes.") }
+    If ($ExpVidLen -ne -1 -and $ActualLen -ne $ExpVidLen)  { Write-Error("Error saving video part of live photo $ElementId. Got $ActualLen bytes, expected $ExpVidLen bytes.") }
 
     # image part
     if ($DriveId -eq '') {
