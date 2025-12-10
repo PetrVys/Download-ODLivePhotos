@@ -167,7 +167,7 @@ function Download-LivePhotosAuth
     }
     Write-Debug("Calling OneDrive API")
     Write-Debug($Uri)
-    $WebRequest=Invoke-WebRequest -Method 'GET' -Header @{ Authorization = $AccessToken; Prefer = "Include-Feature=AddToOneDrive"} -ErrorAction SilentlyContinue -Uri $Uri
+    $WebRequest=Invoke-WebRequest -Method 'GET' -Header @{ Authorization = $AccessToken; Prefer = "Include-Feature=AddToOneDrive"} -ErrorAction SilentlyContinue -UseBasicParsing -Uri $Uri
     $Response = ConvertFrom-Json $WebRequest.Content
     $Response.value | % {
         $FolderPath = $CurrentPath + $_.name + '\'
@@ -273,7 +273,7 @@ function Download-SingleLivePhoto
     Write-Debug($Uri)
     $FileName = $SaveTo+$VideoName
     If (Test-Path($FileName)) { Remove-Item ($FileName) }
-    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $FileName -PassThru
+    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $FileName -PassThru -UseBasicParsing
     $ActualLen = $WebRequest.RawContentLength
     (Get-Item ($FileName)).LastWriteTime = $LastModified
 
@@ -289,7 +289,7 @@ function Download-SingleLivePhoto
     Write-Debug($Uri)
     $FileName = $SaveTo+$ImageName
     If (Test-Path($FileName)) { Remove-Item ($FileName) }
-    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $FileName -PassThru
+    $WebRequest=Invoke-WebRequest -Method "GET" -Uri $Uri -Header @{ Authorization = $AccessToken } -ErrorAction SilentlyContinue -OutFile $FileName -PassThru -UseBasicParsing
     $ActualLen = $WebRequest.RawContentLength
     (Get-Item ($FileName)).LastWriteTime = $LastModified
     
